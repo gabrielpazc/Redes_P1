@@ -56,8 +56,10 @@
  * ******************************************************************************
  */
 /* ID's*/
-#define rx_IDENTIFIER 0x123
+#define rx1_IDENTIFIER 0x123
+#define rx2_IDENTIFIER 0x456
 #define tx_IDENTIFIER 0x123
+
 /* Defines from frdm_flexcan_loopback*/
 #define EXAMPLE_CAN CAN0
 #define EXAMPLE_CAN_CLK_SOURCE (kFLEXCAN_ClkSrc1)
@@ -94,9 +96,17 @@
 
 volatile bool rxComplete = false;
 
+SemaphoreHandle_t g_mutex;
+
 /* flexcan FRAME*/
 flexcan_frame_t txFrame, rxFrame;
+
+/*
+ *
+ */
 void CAN_init(void);
+
+
 /*
  * @brief   Application entry point.
  */
@@ -110,20 +120,26 @@ int main(void) {
   	/* Init FSL debug console. */
     BOARD_InitDebugConsole();
 
+    /* Setup Semaphr*/
+    if(g_mutex == NULL)
+    {
+      g_mutex = xSemaphoreCreateMutex();
+    }
+
 	/*--------------------------------------------------*/
 	/*---------------------- Tasks ---------------------*/
 	/*--------------------------------------------------*/
 	/* Create task*/
-	xTaskCreate(CAN_init, "CAN_init", 128, NULL,
-			RTOS_TASK_PRIORITY - 1, NULL);
+    xTaskCreate(led_blink_seq_one,"led_blink_seq_one",128,NULL,RTOS_TASK_PRIORITY - 1,NULL);
+    xTaskCreate(led_blink_seq_two,"led_blink_seq_two",128,NULL,RTOS_TASK_PRIORITY - 2,NULL);
 
 	/* Start scheduler*/
 	vTaskStartScheduler();
+
     for(;;)
     {
 
     }
-
 
 }
 
@@ -132,8 +148,6 @@ void CAN_init(void)
 {
 	flexcan_config_t flexcanConfig;
 	flexcan_rx_mb_config_t mbConfig;
-
-	uint32_t flag = 1U;
 
 	LOG_INFO("\r\n==FlexCAN loopback functional example -- Start.==\r\n\r\n");
 
@@ -157,74 +171,73 @@ void CAN_init(void)
      *
      */
     flexcanConfig.clkSrc = EXAMPLE_CAN_CLK_SOURCE;
-    flexcanConfig.enableLoopBack = true;
+    flexcanConfig.enableLoopBack = false;
 
     /*
      *
      */
     FLEXCAN_Init(EXAMPLE_CAN, &flexcanConfig, EXAMPLE_CAN_CLK_FREQ);
 
+    /* Create FlexCAN handle structure and set call back function. */
+    FLEXCAN_TransferCreateHandle(EXAMPLE_CAN, &flexcanHandle, flexcan_callback, NULL);
+
     /* Setup Rx Message Buffer. */
+    // Rx Buffer
     mbConfig.format = kFLEXCAN_FrameFormatStandard;
     mbConfig.type   = kFLEXCAN_FrameTypeData;
-
-    mbConfig.id     = FLEXCAN_ID_STD(rx_IDENTIFIER);
+    // ID
+    mbConfig.id     = FLEXCAN_ID_STD(rx1_IDENTIFIER);
     /* Setup Rx Message Buffer. */
     FLEXCAN_SetRxMbConfig(EXAMPLE_CAN, RX_MESSAGE_BUFFER_NUM, &mbConfig, true);
-
-    mbConfig.id     = FLEXCAN_ID_STD(rx_IDENTIFIER);
+    // ID
+    mbConfig.id     = FLEXCAN_ID_STD(rx2_IDENTIFIER);
     /* Setup Rx Message Buffer. */
     FLEXCAN_SetRxMbConfig(EXAMPLE_CAN, RX_MESSAGE_BUFFER_NUM, &mbConfig, true);
-
 
     /* Setup Tx Message Buffer. */
     FLEXCAN_SetTxMbConfig(EXAMPLE_CAN, TX_MESSAGE_BUFFER_NUM, true);
 }
 
-void task_tx_100ms()
+void task_tx()
 {
-	TickType_t xLastWakeTime;
-	const TickType_t xFrequency = OS_TICK_PERIOD_100MS;
 
-	// Initialize the xLastWakeTime variable with the current time.
-	xLastWakeTime = xTaskGetTickCount();
-	/*
-	 * Probablemente funcione mejor con semaforos
-	 */
-
-	while(1)
+	for(;;)
 	{
-	    /* Prepare Tx Frame for sending. */
-		txFrame.id     = FLEXCAN_ID_STD(tx_IDENTIFIER);
-	    txFrame.format = (uint8_t)kFLEXCAN_FrameFormatStandard;
-	    txFrame.type   = (uint8_t)kFLEXCAN_FrameTypeData;
-	    txFrame.length = (uint8_t)DLC;
-
-	    txFrame.dataWord0 = CAN_WORD0_DATA_BYTE_0(0x11) | CAN_WORD0_DATA_BYTE_1(0x22) | CAN_WORD0_DATA_BYTE_2(0x33) |
-	                        CAN_WORD0_DATA_BYTE_3(0x44);
-	    txFrame.dataWord1 = CAN_WORD1_DATA_BYTE_4(0x55) | CAN_WORD1_DATA_BYTE_5(0x66) | CAN_WORD1_DATA_BYTE_6(0x77) |
-	                        CAN_WORD1_DATA_BYTE_7(0x88);
-
-	    LOG_INFO("Send message from MB%d to MB%d\r\n", TX_MESSAGE_BUFFER_NUM, RX_MESSAGE_BUFFER_NUM);
-	    LOG_INFO("tx word0 = 0x%x\r\n", txFrame.dataWord0);
-	    LOG_INFO("tx word1 = 0x%x\r\n", txFrame.dataWord1);
-
-	    (void)FLEXCAN_TransferSendBlocking(EXAMPLE_CAN, TX_MESSAGE_BUFFER_NUM, &txFrame);
-
-	    /* Waiting for Message receive finish. */
-	    while (!rxComplete)
+	    /*
+	     * See if we can obtain or "Take" the Serial Semaphore.
+	     * If the semaphore is not available, wait 5 ticks of the Scheduler to see if it becomes free.
+	     */
+	    if( xSemaphoreTake( g_mutex, ( TickType_t ) 5 ) == pdTRUE )
 	    {
+	    	/* Task Delay*/
+
+	      // Codigo de gabo
+
+	      /* Now free or "Give" the Serial Port for others.*/
+	      xSemaphoreGive( g_mutex );
 	    }
+	    vTaskDelay(1);
+	}
+}
 
-	    LOG_INFO("\r\nReceived message from MB%d\r\n", RX_MESSAGE_BUFFER_NUM);
-	    LOG_INFO("rx word0 = 0x%x\r\n", rxFrame.dataWord0);
-	    LOG_INFO("rx word1 = 0x%x\r\n", rxFrame.dataWord1);
-	    /* Stop FlexCAN Send & Receive. */
-	    FLEXCAN_DisableMbInterrupts(EXAMPLE_CAN, flag << RX_MESSAGE_BUFFER_NUM);
+void task_rx()
+{
 
-	    LOG_INFO("\r\n==FlexCAN loopback functional example -- Finish.==\r\n");
+	for(;;)
+	{
+	    /*
+	     * See if we can obtain or "Take" the Serial Semaphore.
+	     * If the semaphore is not available, wait 5 ticks of the Scheduler to see if it becomes free.
+	     */
+	    if( xSemaphoreTake( g_mutex, ( TickType_t ) 5 ) == pdTRUE )
+	    {
+	    	/* Task Delay*/
 
-        // Wait for the next cycle.
-        vTaskDelayUntil( &xLastWakeTime, xFrequency);
+	      // Codigo de gabo
+
+	      /* Now free or "Give" the Serial Port for others.*/
+	      xSemaphoreGive( g_mutex );
+	    }
+	    vTaskDelay(1);
 	}
 }
