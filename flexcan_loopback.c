@@ -72,13 +72,13 @@ flexcan_frame_t txFrame, rxFrame;
 void EXAMPLE_FLEXCAN_IRQHandler(void)
 {
     /* If new data arrived. */
-    if (FLEXCAN_GetMbStatusFlags(EXAMPLE_CAN, 1 << RX_MESSAGE_BUFFER_NUM))
+    if (FLEXCAN_GetMbStatusFlags(EXAMPLE_CAN, 1 << RX2_MESSAGE_BUFFER_NUM))
     {
-        FLEXCAN_ClearMbStatusFlags(EXAMPLE_CAN, 1 << RX_MESSAGE_BUFFER_NUM);
+        FLEXCAN_ClearMbStatusFlags(EXAMPLE_CAN, 1 << RX2_MESSAGE_BUFFER_NUM);
 #if (defined(USE_CANFD) && USE_CANFD)
         FLEXCAN_ReadFDRxMb(EXAMPLE_CAN, RX_MESSAGE_BUFFER_NUM, &rxFrame);
 #else
-        FLEXCAN_ReadRxMb(EXAMPLE_CAN, RX_MESSAGE_BUFFER_NUM, &rxFrame);
+        FLEXCAN_ReadRxMb(EXAMPLE_CAN, RX2_MESSAGE_BUFFER_NUM, &rxFrame);
 #endif
         rxComplete = true;
     }
